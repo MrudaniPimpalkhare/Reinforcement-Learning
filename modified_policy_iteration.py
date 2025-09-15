@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import time
 
 def animate_mpi(value_improvement, policy_improvement, interval=1000):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))
@@ -112,8 +113,13 @@ def modified_policy_iteration(problem: SellingAssetProblem, max_iter= 1000, poli
 
     value_improvement = []
     policy_improvement = []
+    convergence_norms = []
+
+    start_time = time.time()
 
     for it in range(max_iter):
+
+        V_old = V.copy()
 
         # partial policy evaluation
         for _ in range(policy_iter):
@@ -125,6 +131,9 @@ def modified_policy_iteration(problem: SellingAssetProblem, max_iter= 1000, poli
                     V_new[i] = C + alpha*np.dot(P,V)
 
             V[:] = V_new
+
+        diff_norm = np.linalg.norm(V - V_old, ord=np.inf)  # sup norm
+        convergence_norms.append(diff_norm)
             
 
         # greedy approach for policy improvement
@@ -144,8 +153,12 @@ def modified_policy_iteration(problem: SellingAssetProblem, max_iter= 1000, poli
 
         print(f"Iteration {it + 1}: Threshold = {next((s for s in range(N+1) if policy[s] == 1), 'None')}")
 
-        if not improvment:
+        if diff_norm< tol and not improvment:
             break
+
+    end_time = time.time()
+    runtime = end_time - start_time
+    print(f"\nConverged in {it+1} iterations, time taken = {runtime:.4f} seconds")
 
     return V, policy, value_improvement, policy_improvement
 
