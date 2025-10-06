@@ -3,6 +3,18 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import time
 
+def plot_convergence(convergence_norms):
+    plt.figure(figsize=(6,4))
+    plt.plot(convergence_norms, marker='o')
+    plt.yscale("log")  # since convergence is exponential
+    plt.xlabel("Iteration")
+    plt.ylabel(r"$\|V_{n+1} - V_n\|_\infty$")
+    plt.title("Convergence of Value Function")
+    plt.grid(True, which="both", ls="--")
+    plt.tight_layout()
+    plt.show()
+
+
 def animate_mpi(value_improvement, policy_improvement, interval=1000):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))
 
@@ -153,20 +165,52 @@ def modified_policy_iteration(problem: SellingAssetProblem, max_iter= 1000, poli
 
         print(f"Iteration {it + 1}: Threshold = {next((s for s in range(N+1) if policy[s] == 1), 'None')}")
 
-        if diff_norm< tol and not improvment:
+        if diff_norm < tol or not improvment:
             break
 
     end_time = time.time()
     runtime = end_time - start_time
     print(f"\nConverged in {it+1} iterations, time taken = {runtime:.4f} seconds")
 
-    return V, policy, value_improvement, policy_improvement
+    return V, policy, value_improvement, policy_improvement, convergence_norms, runtime
 
+def mpi_finite_horizon(problem: SellingAssetProblem, T=100):
+    N = max(problem.get_all_states())
+    P = problem.P
+    alpha = problem.alpha
+    C = problem.C 
+    V_table = np.zeros((T+1,N+1))
+    policy_table = np.zeros((T, N + 1), dtype=int)
+
+    # accept the offer on the last day (no other option)
+    V_table[T, :] = -np.arange(N + 1)
+    print("Starting backward induction...")
+    start_time = time.time()
+
+    for t in reversed(range(T)):
+        reject_cost = C + alpha*np.dot(P,V_table[t+1])
+
+        accept_costs = -np.arange(N+1)
+        # The value at time t is the minimum of the two costs
+        V_table[t, :] = np.minimum(accept_costs, reject_cost)
+
+        # The policy is to accept (1) if the accept_cost is lower
+        policy_table[t, :] = (accept_costs < reject_cost).astype(int)
+        
+        # Find and print the threshold for the current time step t
+        threshold = next((s for s in range(N + 1) if policy_table[t, s] == 1), N)
+        print(f"Time t={t}: Optimal threshold i*_{t} = {threshold}")
+
+    end_time = time.time()
+    runtime = end_time - start_time
+    print(f"\nFinite horizon solution found in {runtime:.4f} seconds")
+        
+    return V_table, policy_table, runtime
 
 if __name__ == "__main__":
 
     problem = SellingAssetProblem(N=1000, alpha=0.9, C=10)
-    V, policy, V_hist, pi_hist = modified_policy_iteration(problem)
+    V, policy, V_hist, pi_hist, convergence_norms, runtime = modified_policy_iteration(problem)
 
     theory_i_star = calculated_threshold(problem)
     print("Theoretical threshold i* =", theory_i_star)
@@ -177,6 +221,26 @@ if __name__ == "__main__":
 
     # Animate
     ani = animate_mpi(V_hist, pi_hist)
+
+    # Plot convergence
+    plot_convergence(convergence_norms)
+
+    # --- Finite Horizon ---
+    print("--- SOLVING FOR FINITE HORIZON (T=50) ---")
+    problem_fin = SellingAssetProblem(N=1000, alpha=0.9, C=10)
+    T = 6 # Example time horizon
+    V_table_fin, policy_table_fin, runtime_fin = mpi_finite_horizon(problem_fin, T)
+    
+    # Visualize the time-dependent thresholds
+    thresholds = [next((s for s, a in enumerate(pi) if a == 1), problem_fin.N) for pi in policy_table_fin]
+    
+    plt.figure(figsize=(8, 5))
+    plt.plot(range(T), thresholds, marker='o', linestyle='--')
+    plt.title("Optimal Threshold vs. Time")
+    plt.xlabel("Time Step (t)")
+    plt.ylabel("Threshold (i*_t)")
+    plt.grid(True)
+    plt.show()
 
 
 
