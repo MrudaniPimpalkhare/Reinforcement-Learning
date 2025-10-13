@@ -2,6 +2,42 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import time
+from scipy.stats import norm
+
+def create_transition_matrix(N, sigma, revert_strength=0.1, market_mean=None):
+    """
+    Creates a Markov transition matrix P[i, j] = P(s_next=j | s_curr=i).
+
+    Args:
+        N (int): The maximum offer.
+        sigma (float): The volatility of offers.
+        revert_strength (float): How strongly offers revert to the mean (0=no reversion).
+        market_mean (int): The global market mean offer. If None, defaults to N/2.
+    """
+    if market_mean is None:
+        market_mean = N / 2
+        
+    states = np.arange(N + 1)
+    # P_matrix[i, j] will be the probability of transitioning from state i to state j
+    P_matrix = np.zeros((N + 1, N + 1))
+    
+    for i in range(N + 1):
+        # Calculate the mean for the next offer distribution (mean-reversion)
+        mean_offer = (1 - revert_strength) * i + revert_strength * market_mean
+        
+        # Calculate the probability for each possible next state j
+        # using a normal distribution PDF, then normalize.
+        # This is a discretized normal distribution.
+        P_matrix[i, :] = norm.pdf(states, loc=mean_offer, scale=sigma)
+        
+        # Normalize the row so that probabilities sum to 1
+        row_sum = P_matrix[i, :].sum()
+        if row_sum > 0:
+            P_matrix[i, :] /= row_sum
+        else: # Handle edge case where all probabilities are zero
+            P_matrix[i, i] = 1.0
+
+    return P_matrix
 
 def plot_convergence(convergence_norms):
     plt.figure(figsize=(6,4))
@@ -205,11 +241,11 @@ def mpi_finite_horizon(problem: SellingAssetProblem, T=100):
     runtime = end_time - start_time
     print(f"\nFinite horizon solution found in {runtime:.4f} seconds")
         
-    return V_table, policy_table, runtime
+    return V_table, policy_table, runtime    
 
 if __name__ == "__main__":
 
-    problem = SellingAssetProblem(N=1000, alpha=0.9, C=10)
+    problem = SellingAssetProblem(N=100, alpha=0.9, C=10)
     V, policy, V_hist, pi_hist, convergence_norms, runtime = modified_policy_iteration(problem)
 
     theory_i_star = calculated_threshold(problem)
@@ -227,7 +263,7 @@ if __name__ == "__main__":
 
     # --- Finite Horizon ---
     print("--- SOLVING FOR FINITE HORIZON (T=50) ---")
-    problem_fin = SellingAssetProblem(N=1000, alpha=0.9, C=10)
+    problem_fin = SellingAssetProblem(N=100, alpha=0.9, C=10)
     T = 6 # Example time horizon
     V_table_fin, policy_table_fin, runtime_fin = mpi_finite_horizon(problem_fin, T)
     
@@ -241,6 +277,7 @@ if __name__ == "__main__":
     plt.ylabel("Threshold (i*_t)")
     plt.grid(True)
     plt.show()
+
 
 
 
